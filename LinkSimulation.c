@@ -9,11 +9,12 @@
 #include <stdio.h>
 
 #define MAX_NODECOUNT 100
-#define Color_Red "\33[0:31m\\]" // Color Start
-#define Color_end "\33[0m\\]" // To flush out prev settings
+#define Color_Red "\x1b[31;1m;" // Color Start
+#define Color_Blue "\x1b[34;1m;" // Color Start
+#define Color_end "\x1b[39;49m" // To flush out prev settings
 
 #define LOG_RED(X) printf("%s %s %s",Color_Red,X,Color_end)
-#define LOG_BLUE(X) printf("%s %s %s",Color_Red,X,Color_end)
+#define LOG_BLUE(X) printf("%s %c %s",Color_Blue,X,Color_end)
 
 
 struct dnode
@@ -22,7 +23,7 @@ struct dnode
    int weight_cumulative;
    struct dnode * left;
    struct dnode * right;
-}
+};
 
 struct node
 {
@@ -33,6 +34,7 @@ struct node
 };
 struct node all_nodes[MAX_NODECOUNT];
 int original_topology[MAX_NODECOUNT][MAX_NODECOUNT];
+
 int nodeCount;
 
 void updateLSP(int srcindex, int destindex, int * LSPArray, int seqNumber)
@@ -55,8 +57,25 @@ void loadOriginalTopology()
    //read the network.txt to form a matrix
 
    //Initialize the nodecount variable
-
-}
+   int n, m, count = 5;
+  
+  FILE *inp; 
+  inp = fopen("network.txt","r");
+  for (n = 0; n < count; ++n) {
+  for (m = 0; m < count; ++m)
+    fscanf (inp, "%d", &original_topology[n][m]);
+  }
+  fclose (inp); 
+  
+  for (n = 0; n < count; ++n) 
+  {
+    for (m = 0; m < count; ++m)
+    {
+      printf("%d  ",original_topology[n][m]);
+    }
+     printf("\n");
+  }
+   }
 
 void InitializeNodes()
 {
@@ -102,15 +121,27 @@ int main()
 
   //Display the Menu screen
    char menu_input = 'a';
-  while(menu_input;!='\n')
+  while(menu_input!='4')
   {
-     LOG_BLUE("\n\n\n\t 1-Load File\n\t 2-Build Routing Table for each Router \n\t 3-Out Optimal Path and Minimum Cost\n\n ");
-     char menu_input = getchar();
-     LOG_RED(menu_Input);
+     LOG_RED("\n\n\n\t 1-Load File\n\t 2-Build Routing Table for each Router \n\t 3-Out Optimal Path and Minimum Cost\n\t 4-Exit Program\n\n ");
+     scanf(" %c",&menu_input);
      
-    if(menu_input<32 || menu_input>35)
-      printf("Wrong menu key entered. Try again : ");
-    
+
+      switch(menu_input)
+      {
+	case '1' :
+	  InitializeNodes();
+	  break;
+	case '2' :
+	  break;
+	case '3' :
+	  break;
+	case '4' :
+	  return(0);
+	default :  printf("Wrong menu key entered. Try again : ",menu_input);
+      }
+
+    fflush(stdin);
     
   }
 }
