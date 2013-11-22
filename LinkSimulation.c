@@ -17,7 +17,7 @@
 #define LOG_BLUE(X) printf("%s %s %s",Color_Blue,X,Color_end)
 
 //#define DEBUG_INI 0;
-#define DEBUG 0;
+//#define DEBUG 0;
 
 #ifdef DEBUG_INI
 # define DEBUG_PRINT_INI(x) printf x
@@ -31,28 +31,50 @@
 # define DEBUG_PRINT(x) do {} while (0)
 #endif
 
+/*
+ * Used in the shortes path tree. pathnode is used to represent each node 
+ * 
+ */
 struct pathnode
 {
-   //int index;
+   //Indicates the cumulative weight till the node form source
    int weight_cumulative;
+   //Indicates that the node has been marked and its minimum distance from source found
    int flag_inpath;
+   //Indicates the index of the previous node in the path
    int prev_index;
 
 };
 
+/*
+ * node represents a router node
+ * 
+ */
 struct node
 {
-    int node_index;
-    int topology[MAX_NODECOUNT][MAX_NODECOUNT];
-    int max_seq_recvd[MAX_NODECOUNT];
-    struct pathnode path[MAX_NODECOUNT];
+  //Indicates the index of the router
+  int node_index;
+  //Indicates the graph topology
+  int topology[MAX_NODECOUNT][MAX_NODECOUNT];
+  //Can be used to keep track of LSP received. Not used in this project as LSP is sent only once
+  int max_seq_recvd[MAX_NODECOUNT];
+  //Represents the shortest path tree with the router as the source
+  struct pathnode path[MAX_NODECOUNT];
 };
+
+//Represents all routers/nodes in the graph. Used to set each one
 struct node all_nodes[MAX_NODECOUNT];
+
+//Represents the entire node topology
 int original_topology[MAX_NODECOUNT][MAX_NODECOUNT];
 
-int nodeCount= 5;
-   //Todo remove harcoding;
+//Filename used for loading the data
+char filename[30] ;
+int nodeCount = 0;
 
+/*
+ * Function used for updating the LSP message information at a router indicated by destindex
+ */
 void updateLSP(int senderIndex, int srcindex, int destindex, int * LSPArray, int seqNumber)
 {
   DEBUG_PRINT_INI(("\nSending LSPArray from src %d through sender %d to dest %d",srcindex,senderIndex,destindex));
@@ -89,7 +111,11 @@ void updateLSP(int senderIndex, int srcindex, int destindex, int * LSPArray, int
    //
 }
 
-void loadOriginalTopology()
+/*
+ * Function reads from the specified file and automatically counts the number of nodes
+ * It loads the original_topology matrix with integer values from the file
+ */
+int loadOriginalTopology()
 {
    //read the network.txt to form a matrix
 
@@ -97,14 +123,27 @@ void loadOriginalTopology()
    int n, m;
   
   FILE *inp; 
-  inp = fopen("network.txt","r");
+  if((inp = fopen(filename,"r"))==NULL)
+    return -1;
+  
+  //Read number of nodes
+  char fchar;
+  nodeCount = 0;
+  while((fchar = fgetc(inp)) != '\n')
+  {
+    if(fchar>='0' && fchar<='9')
+      nodeCount++;
+  }
+  
+  //Reset the input to start of the file
+  fseek(inp, 0, SEEK_SET);
   for (n = 0; n < nodeCount; ++n) {
   for (m = 0; m < nodeCount; ++m)
     fscanf (inp, "%d", &original_topology[n][m]);
   }
   fclose (inp); 
   
-  
+  return 1;
 }
 
 void DebugPrintOriginalTopology()
@@ -144,10 +183,13 @@ void DebugPrintAllNodeToppology()
   }
 }
 
-void InitializeNodes()
+int InitializeNodes()
 {
    //Load the topology
-   loadOriginalTopology();
+   if(loadOriginalTopology()<0)
+   {
+     return -1;
+   }
 
    //Initialize node.topology from the original_topology matrix
    //So that each node only konws its own topology
@@ -198,6 +240,7 @@ void InitializeNodes()
     }
   } 
   DebugPrintAllNodeToppology();
+  return 1;
 }
 
 void SetPath(struct pathnode * pnode, int weight_cumulative, int prev_index,int flag_inpath)
@@ -224,16 +267,15 @@ void GenerateRoutingTable(int index)
    int neighbour =0;
    for(;neighbour<nodeCount;neighbour++)
    {
-     
      int weight = router->topology[index][neighbour];
      if(weight > 0 && neighbour != index)
-     {
-       
-       SetPath(&router->path[neighbour],weight,0,0);
-       //include_count++;
+     {   
+       //Directly connected neighbours
+       SetPath(&router->path[neighbour],weight,index,0);
      }
      else if(weight < 0 && neighbour != index)
      {
+       //Neighbours who are not directly connected
        //Set all other nodes weight_cumulative to infinity say 999999 and prev to -1
        SetPath(&router->path[neighbour],999999,-1,0);
      }
@@ -244,8 +286,7 @@ void GenerateRoutingTable(int index)
    int j=0;
    for(;j<nodeCount;j++)
    {
-     DEBUG_PRINT(("\t%d\t\t %d\t\t %d\t\t %d\n", j, router->path[j].prev_index, router->path[j].weight_cumulative, router->path[j].flag_inpath));
-     
+     DEBUG_PRINT(("\t%d\t\t %d\t\t %d\t\t %d\n", j, router->path[j].prev_index, router->path[j].weight_cumulative, router->path[j].flag_inpath));     
    }
    
    //Dijkstras algorithm to generate the shortest path tree
@@ -255,18 +296,21 @@ void GenerateRoutingTable(int index)
      //Find minimum weighted node for whom flag_inpath = 0
      int minweight = 999999, minnode=-1;
      int i = 0;
+     
+     //Get index of the least weighted node
      for(; i < nodeCount; i++)
      {
        int cum_weight = router->path[i].weight_cumulative;
        if(!router->path[i].flag_inpath && cum_weight<=minweight)
        {
 	 minweight = cum_weight;
+	 //Set index of the least weighted node
 	 minnode = i;
 	 DEBUG_PRINT((" Min node found :%d Include Count : %d\n",minnode,include_count));
        }
      }
      
-     
+     //If min node is found, update the shortest path tree
      if(minnode != -1)
      {
        //Add the minimum weight node to the path
@@ -338,7 +382,7 @@ void GenerateRoutingTable(int index)
 	 nextrouter = router->path[j].prev_index;
 	 safe++;
        }
-       printf("\tR%d\t\t %d\t\t %d\n", j+1, router->path[j].weight_cumulative, nextrouter);
+       printf("\tR%d\t\t %d\t\t %d\n", j+1, router->path[j].weight_cumulative, nextrouter+1);
      }
    }
 }
@@ -391,7 +435,14 @@ int main()
       switch(menu_input)
       {
 	case '1' :
-	  InitializeNodes();
+	  //Get the file 
+	  LOG_BLUE("\n\t Please load original routing table data file : ");
+	  scanf("%s", filename);
+	  printf("File %s \n", filename);
+	  if(InitializeNodes()<0)
+	  {
+	    printf("File %s could not be loaded. Please check location and try again\n", filename);
+	  }
 	  break;
 	case '2' :
 	  LOG_BLUE("\n\t Please select a router\n\n ");
@@ -433,19 +484,19 @@ int main()
 
 
 /*
-1) Test if all the nodes are getting loaded up with the same values as the same in network.txt
-2) Test if path generated is same as expected for a given graph
-3) Test correct path generated for geven two nodes
+ * 
+1) Fix network.txt hardcoding : File name is currently hardcoded  -- done
+2) Fix reversed printing of shortest path
+3) Fix colured input from user
+4) Find the max node count which will be tested                   -- done
+5) Additional tests : Test on nodes of size 10 20 and 30
+6) Documentation
+7) Change array implementation to linked list implementation(only if time available)
 
-4) Fix networt.txt hardcoding
-5) Fix reversed printing of shortest path
-6) Fix MAX_NODECOUNT to be dynamic
-
-7) Additional tests
-8) Find the max node count which will be tested
-
-/lib/ld-linux.so.2 ./linkSim 
+Use the below code in unix/ubuntu/linux to run the code.
 gcc LinkSimulation.c -o linkSim
+/lib/ld-linux.so.2 ./linkSim 
+
 */
 
 

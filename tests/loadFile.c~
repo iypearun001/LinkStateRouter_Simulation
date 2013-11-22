@@ -37,7 +37,7 @@ int main(int argc, char ** argv)
   
   printf("Nodecount : %d\n",count);
   
-  fseek(inp, 0, SEEK_SET);
+  
   for (n = 0; n < count; ++n) {
   for (m = 0; m < count; ++m)
     fscanf (inp, "%d", &x[n][m]);
