@@ -28,11 +28,19 @@ int main(int argc, char ** argv)
    printf("Filename received for n x n matrix : %s",filename);
   //Read file without bounds being given
   char fchar;
+  int prevIsChar = 0;
   count = 0;
   while((fchar = fgetc(inp)) != '\n')
   {
-    if(fchar>='0' && fchar<='9')
+    if(fchar>='0' && fchar<='9' && !prevIsChar)
+    {
+      prevIsChar = 1;
       count++;
+    }
+    else
+    {
+      prevIsChar =0;
+    }
   }
   
   printf("Nodecount : %d\n",count);

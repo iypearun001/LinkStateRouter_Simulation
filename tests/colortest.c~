@@ -50,5 +50,5 @@ int main()
     char test[10];
     printf("%d",sizeof(test));
     cScanf(test, sizeof(test));
-    printf("\n\n%s",test);
+    
 }

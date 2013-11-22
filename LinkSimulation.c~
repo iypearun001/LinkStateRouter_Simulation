@@ -7,14 +7,19 @@
 */
 
 #include <stdio.h>
+#include <unistd.h>
+#include <termios.h>
+
 
 #define MAX_NODECOUNT 100
 #define Color_Red "\x1b[31;1m" // Color Start
 #define Color_Blue "\x1b[34;1m" // Color Start
 #define Color_end "\x1b[39;49m" // To flush out prev settings
 
-#define LOG_RED(X) printf("%s %s %s",Color_Red,X,Color_end)
-#define LOG_BLUE(X) printf("%s %s %s",Color_Blue,X,Color_end)
+#define LOG_RED(X) printf("%s%c%s",Color_Red,X,Color_end)
+
+#define LOG_BLUE(X) printf("%s%s%s",Color_Blue,X,Color_end)
+#define LOG_BLUE_ARG(X) printf X
 
 //#define DEBUG_INI 0;
 //#define DEBUG 0;
@@ -72,6 +77,21 @@ int original_topology[MAX_NODECOUNT][MAX_NODECOUNT];
 char filename[30] ;
 int nodeCount = 0;
 
+/*Function to do the dos getch()
+ * http://stackoverflow.com/questions/6856635/hide-password-input-on-terminal
+ */
+int getch() {
+    struct termios oldtc, newtc;
+    int ch;
+    tcgetattr(STDIN_FILENO, &oldtc);
+    newtc = oldtc;
+    newtc.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &newtc);
+    ch=getchar();
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldtc);
+    return ch;
+}
+
 /*
  * Function used for updating the LSP message information at a router indicated by destindex
  */
@@ -128,11 +148,19 @@ int loadOriginalTopology()
   
   //Read number of nodes
   char fchar;
+  int prevIsChar = 0;
   nodeCount = 0;
   while((fchar = fgetc(inp)) != '\n')
   {
-    if(fchar>='0' && fchar<='9')
+    if(fchar>='0' && fchar<='9' && !prevIsChar)
+    {
+      prevIsChar = 1;
       nodeCount++;
+    }
+    else
+    {
+      prevIsChar =0;
+    }
   }
   
   //Reset the input to start of the file
@@ -149,15 +177,15 @@ int loadOriginalTopology()
 void DebugPrintOriginalTopology()
 {
   int n,m;
-  DEBUG_PRINT_INI(("Original Topology \n"));
+  LOG_BLUE("\n\n\tOriginal routing table is as follows \n\t");
   for (n = 0; n < nodeCount; ++n) 
   {
-    
     for (m = 0; m < nodeCount; ++m)
     {
-      DEBUG_PRINT_INI(("%d  ",original_topology[n][m]));
+      LOG_BLUE_ARG(("%s%d%s  ",Color_Blue,original_topology[n][m],Color_end));
+      //printf("%d  ",original_topology[n][m]);
     }
-     DEBUG_PRINT_INI(("\n"));
+     LOG_BLUE(("\n\t"));
   }
   
 }
@@ -168,7 +196,7 @@ void DebugPrintAllNodeToppology()
   for (n = 0; n < nodeCount; ++n) 
   {
     struct node * current_node = &all_nodes[n];
-    DEBUG_PRINT_INI(("\n\nTopology for Currentnode Index :%d\n",current_node->node_index));
+    DEBUG_PRINT_INI(("\n\n\tTopology for Currentnode Index :%d\n",current_node->node_index));
     
     int k;
     for (k = 0; k < nodeCount; ++k) 
@@ -239,7 +267,7 @@ int InitializeNodes()
       }
     }
   } 
-  DebugPrintAllNodeToppology();
+  DebugPrintOriginalTopology();
   return 1;
 }
 
@@ -253,7 +281,7 @@ void SetPath(struct pathnode * pnode, int weight_cumulative, int prev_index,int 
 
 void GenerateRoutingTable(int index)
 {
-  printf("Generating Routing Table \n");
+   DEBUG_PRINT("Generating Routing Table \n");
    //Get the node at index
    struct node * router = &all_nodes[index];
 
@@ -365,14 +393,14 @@ void GenerateRoutingTable(int index)
     2                0              		 5               1
     3                0              		 1               1
     4                3              		 3               1*/
-    printf("The Routing Table for Router R%d : \n Destination\t\tCost\t\t Next Router\n",index+1);
-    j=0;
+   LOG_BLUE_ARG(("\n\n\t%sThe Routing Table for Router R%d : \n\t Destination\t\tCost\t\t Next Router%s\n",Color_Blue,index+1,Color_end));
+   j=0;
    for(;j<nodeCount;j++)
    {
      
      //In case of source or prev index = source, there is no next router
      if(router->path[j].prev_index == -1 || router->path[j].prev_index == index)
-       printf("\tR%d\t\t %d\t\t --\n", j+1, router->path[j].weight_cumulative);
+       LOG_BLUE_ARG(("%s\t\tR%d\t\t %d\t\t --%s\n",Color_Blue, j+1, router->path[j].weight_cumulative,Color_end));
      else
      {
        //We need to find the router next to source which leads to the this vertex
@@ -382,12 +410,30 @@ void GenerateRoutingTable(int index)
 	 nextrouter = router->path[j].prev_index;
 	 safe++;
        }
-       printf("\tR%d\t\t %d\t\t %d\n", j+1, router->path[j].weight_cumulative, nextrouter+1);
+       LOG_BLUE_ARG(("%s\t\tR%d\t\t %d\t\t %d%s\n",Color_Blue, j+1, router->path[j].weight_cumulative, nextrouter+1,Color_end));
      }
    }
 }
 
-
+/*
+ * Function to recursively print the route
+ */
+void PrintShortestPath_Rec(struct node * srcRouter,  int pnode_index, int pathlength)
+{
+    //Get the node at index pnode_index
+  int prev_index = srcRouter->path[pnode_index].prev_index;
+  
+   if(prev_index != srcRouter->node_index && pathlength > 0)
+  {
+    //If there is another router in the path to the source, go to it
+    PrintShortestPath_Rec(srcRouter,  prev_index,  pathlength -1);
+  }
+  //If there is no other router in the path to the source, print
+  if(pathlength != nodeCount - 1)
+    LOG_BLUE_ARG(("%sR%d ->%s",Color_Blue,prev_index + 1, Color_end));
+  else
+    LOG_BLUE_ARG(("%sR%d%s ",Color_Blue,prev_index + 1, Color_end));
+}
 
 void PrintShortestPath(int src, int dst)
 {
@@ -403,21 +449,36 @@ void PrintShortestPath(int src, int dst)
   //traverse the tree and print the path to the dst node
    
   //We need to find all the routers in the path destination to the source
-  char printBuffer[MAX_NODECOUNT*2];
+
   int nextrouter = dst, safe=0;;
-   printf("The shortest path from %d to %d is :",src+1, dst+1);
-  while(nextrouter != src && safe < nodeCount)
+  LOG_BLUE_ARG(("\n\n\t%sThe shortest path from %d to %d is :%s",Color_Blue, src+1, dst+1, Color_end));
+  /*while(nextrouter != src && safe < nodeCount)
   {
     printf("R%d ->",nextrouter+1);
     nextrouter = srcRouter->path[nextrouter].prev_index;
     safe++;
   }
   if(nextrouter == src )
-    printf("R%d, the total cost is :%d ",nextrouter+1,srcRouter->path[dst].weight_cumulative );
+  */
+  PrintShortestPath_Rec(srcRouter, dst, nodeCount - 1);
+  LOG_BLUE_ARG(("%s->R%d \t,the total cost (value) :%d %s",Color_Blue,dst+1,srcRouter->path[dst].weight_cumulative, Color_end));
  
 
 }
 
+/*
+ * Function to disply the entrered string in red
+ */
+void cScanf(char * inputString, int maxlength )
+{
+  int i =0;
+  while((inputString[i] = getch())!='\n' && i < maxlength-1)
+  {
+    LOG_RED(inputString[i]);
+    i++;
+  }
+  inputString[i]='\0';
+}
 
 int main()
 {
@@ -425,11 +486,16 @@ int main()
    char input_buffer[30];
 
   //Display the Menu screen
-   char menu_input = 'a', routerIp, srcIp,destIp;
+   char menu_input = 'a', routerIp[3], srcIp[3],destIp[3],menu_input_str[2];
   while(menu_input!='4')
   {
-     LOG_BLUE("\n\n\n\t 1-Load File\n\t 2-Build Routing Table for each Router \n\t 3-Out Optimal Path and Minimum Cost\n\t 4-Exit Program\n\n ");
-     scanf(" %c",&menu_input);
+     LOG_BLUE("\n\n\n\t 1-Load File\n\t 2-Build Routing Table for each Router \n\t 3-Out Optimal Path and Minimum Cost\n\t 4-Exit Program\n\n\t ");
+     //scanf(" %c",&menu_input);
+     //menu_input = getch();
+     cScanf(menu_input_str,sizeof(menu_input_str));
+     menu_input = menu_input_str[0];
+    // LOG_RED(menu_input);
+  
      
 
       switch(menu_input)
@@ -437,34 +503,42 @@ int main()
 	case '1' :
 	  //Get the file 
 	  LOG_BLUE("\n\t Please load original routing table data file : ");
-	  scanf("%s", filename);
-	  printf("File %s \n", filename);
+	  //scanf("%s", filename);
+	 cScanf(filename,sizeof(filename));
+	 
+	  DEBUG_PRINT(("File %s \n", filename));
 	  if(InitializeNodes()<0)
 	  {
-	    printf("File %s could not be loaded. Please check location and try again\n", filename);
+	    printf("\nFile %s could not be loaded. Please check location and try again\n", filename);
 	  }
 	  break;
 	case '2' :
-	  LOG_BLUE("\n\t Please select a router\n\n ");
-          scanf(" %c",&routerIp);
-          if(routerIp >= '1' && (routerIp-48) <= nodeCount)
+	  LOG_BLUE("\n\t Please select a router : ");
+          //scanf(" %c",&routerIp);
+	  cScanf(routerIp,sizeof(routerIp));
+	  int routerNumber = atoi(routerIp);
+          if(routerNumber >= 1 && routerNumber <= nodeCount)
 	  {
-	      GenerateRoutingTable(routerIp-49);
+	      GenerateRoutingTable(routerNumber-1);
 	  }
 	  else
 	  {
-	    printf("%d\n",routerIp);
-	    LOG_BLUE("\tWrong router index entered. Try again : ");
+	    //printf("%d\n",routerNumber);
+	    LOG_BLUE("\n\tWrong router index entered. Try again : ");
 	  }
 	  break;
 	case '3' :
-	  LOG_BLUE("\n\t Please select a source\n\n ");
-          scanf(" %c",&srcIp);
-	  LOG_BLUE("\n\t Please select a destination\n\n ");
-          scanf(" %c",&destIp);
-          if(srcIp >= '1' && (srcIp-48) <= nodeCount && destIp >= '1' && (destIp-48) <= nodeCount)
+	  LOG_BLUE("\n\t Please select a source : ");
+          //scanf(" %c",&srcIp);
+	  cScanf(srcIp,sizeof(srcIp));
+	  LOG_BLUE("\n\t Please select a destination : ");
+          //scanf(" %c",&destIp);
+	  cScanf(destIp,sizeof(destIp));
+	  int srcrouterNumber = atoi(srcIp);
+	  int dstrouterNumber = atoi(destIp);
+          if(srcrouterNumber >= 1 && srcrouterNumber <= nodeCount && dstrouterNumber >= 1 && dstrouterNumber <= nodeCount)
 	  {
-	    PrintShortestPath(srcIp -49 , destIp -49);
+	    PrintShortestPath(srcrouterNumber-1 , dstrouterNumber-1);
 	  }
 	  else
 	  {
@@ -485,13 +559,15 @@ int main()
 
 /*
  * 
-1) Fix network.txt hardcoding : File name is currently hardcoded
-2) Fix reversed printing of shortest path
-3) Fix colured input from user
-4) Find the max node count which will be tested
+1) Fix network.txt hardcoding : File name is currently hardcoded  -- done
+2) Fix reversed printing of shortest path                         -- done
+3) Fix colured input from user                                    -- done
+4) Find the max node count which will be tested                   -- done
 5) Additional tests : Test on nodes of size 10 20 and 30
 6) Documentation
 7) Change array implementation to linked list implementation(only if time available)
+8) Fix node counting while loading files
+9) Display original routing table after loading
 
 Use the below code in unix/ubuntu/linux to run the code.
 gcc LinkSimulation.c -o linkSim
